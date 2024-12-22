@@ -67,9 +67,19 @@ async function extractHexFromRepositories(repositories) {
         for (const commit of commitHashes) {
             const files = await getFilesInCommit(repoPath, commit);
             for (const file of files) {
+                const fullPath = path.join(repoPath, file);
+                const stat = fs.statSync(fullPath);
+
+                // 跳过目录
+                if (stat.isDirectory()) {
+                    console.log(`跳过目录: ${fullPath}`);
+                    continue;
+                }
+
                 const hexStrings = findHexStringsInFile(path.join(repoPath, file));
                 hexStrings.forEach(hex=>{
                     if(!hexMap.has(hex)){
+                        hexMap.set(hex,1);
                         appendToFile(OUTPUT_FILE,`Hex: ${hex}\n`);
                     }
                 });
