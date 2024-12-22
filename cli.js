@@ -57,6 +57,9 @@ async function extractHexFromRepositories(repositories) {
         const repoUrl = repo.clone_url;
         const repoName = path.basename(repoUrl, '.git');
         const repoPath = path.join(PROJECTS_DIR, repoName);
+        if(repoName==="go-ethereum"){
+            continue;
+        }
 
         await cloneRepository(repoUrl, repoPath);
         const commitHashes = await getCommitHashes(repoPath);
