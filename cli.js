@@ -30,7 +30,7 @@ async function cloneRepository(repoUrl, repoPath) {
     await git.clone(repoUrl, repoPath);
 }
 
-async function getCommitHashes(repoPath) {
+async function getAllCommitHashes(repoPath) {
     const git = simpleGit(repoPath);
     const result = await git.raw(['rev-list', '--all']);
     return result.split('\n').filter(Boolean);
@@ -42,16 +42,19 @@ async function getFilesInCommit(repoPath, commitHash) {
     return result.split('\n').filter(Boolean);
 }
 
-function findHexStringsInFile(filePath) {
-    if (!fs.existsSync(filePath)) return [];
+async function getFileContentAtCommit(repoPath, commitHash, filePath) {
+    const git = simpleGit(repoPath);
+    const result = await git.raw(['show', `${commitHash}:${filePath}`]);
+    return result;
+}
 
-    const content = fs.readFileSync(filePath, 'utf-8');
+function findHexStringsInContent(content) {
     const hexStrings = content.match(/\b[a-fA-F0-9]{64}\b/g);
     return hexStrings || [];
 }
 
 async function extractHexFromRepositories(repositories) {
-    const hexMap = new Map(); // 用于存储唯一的十六进制字符串
+    const hexSet = new Set(); // 用于存储唯一的十六进制字符串
 
     for (const repo of repositories) {
         const repoUrl = repo.clone_url;
@@ -62,7 +65,7 @@ async function extractHexFromRepositories(repositories) {
         }
 
         await cloneRepository(repoUrl, repoPath);
-        const commitHashes = await getCommitHashes(repoPath);
+        const commitHashes = await getAllCommitHashes(repoPath);
 
         for (const commit of commitHashes) {
             const files = await getFilesInCommit(repoPath, commit);
@@ -76,14 +79,19 @@ async function extractHexFromRepositories(repositories) {
                     continue;
                 }
 
-                const hexStrings = findHexStringsInFile(path.join(repoPath, file));
-                hexStrings.forEach(hex=>{
-                    if(!hexMap.has(hex)){
-                        hexMap.set(hex,1);
-                        appendToFile(OUTPUT_FILE,`Hex: ${hex}\n`);
-                    }
-                });
-               
+                // 获取该提交中该文件的内容
+                try {
+                    const content = await getFileContentAtCommit(repoPath, commit, file);
+                    const hexStrings = findHexStringsInContent(content);
+                    hexStrings.forEach(hex=>{
+                        if(!hexMap.has(hex)){
+                            hexMap.set(hex,1);
+                            appendToFile(OUTPUT_FILE,`Hex: ${hex}\n`);
+                        }
+                    });
+                } catch (error) {
+                    console.log(`无法获取文件内容: ${fullPath} 在提交 ${commit} 中`);
+                }
             }
         }
 
@@ -92,7 +100,6 @@ async function extractHexFromRepositories(repositories) {
         console.log(`已删除仓库 ${repoPath}`);
     }
 
-    console.log(`查找结果已记录到 ${OUTPUT_FILE}`);
 }
 
 (async () => {
@@ -105,7 +112,7 @@ async function extractHexFromRepositories(repositories) {
         const repositories = await searchGithubProjects(SEARCH_QUERY);
         await extractHexFromRepositories(repositories);
     } catch (error) {
-        console.error('发生错误:', error.message);
+        console.error('发生错误:', error);
     }
 })();
 
